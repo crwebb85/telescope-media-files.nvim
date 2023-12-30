@@ -45,9 +45,6 @@ local function get_render_at_size_command(path, width, height)
 		path,
 		"--format=symbols",
 		"--clear",
-		"--animate=off",
-		"--center=on",
-		"--clear",
 		"--size",
 		string.format("%sx%s", width, height),
 	}
