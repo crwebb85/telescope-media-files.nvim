@@ -34,30 +34,73 @@ end
 
 ---@class PreviewDrawerOptions
 ---@field path string
+---@field preview_buffer number
 ---@field preview_col number
 ---@field preview_line number
 ---@field preview_width number
 ---@field preview_height number
 
-local function get_render_at_size_command(path, width, height)
-	return {
+local function get_render_at_size_image(path, width, height)
+	local output = vim.fn.system({
 		"chafa",
 		path,
 		"--format=symbols",
 		"--clear",
 		"--size",
 		string.format("%sx%s", width, height),
-	}
+	})
+	return output
 end
 
 ---@param opts PreviewDrawerOptions
 local function image_preview(opts)
-	return get_render_at_size_command(opts.path, opts.preview_width, opts.preview_height)
+	local channel = vim.api.nvim_open_term(opts.preview_buffer, {})
+	vim.system({
+		"chafa",
+		opts.path,
+		"--format=symbols",
+		-- "--format=iterm",
+		"--clear",
+		"--size",
+		string.format("%sx%s", opts.preview_width, opts.preview_height),
+	}, {
+		stdout = function(err, data)
+			vim.print("data1:", type(data))
+			if data == nil then
+				return
+			end
+			vim.schedule(function()
+				vim.print("data2:", type(data))
+				local image_text = data
+				vim.api.nvim_chan_send(channel, image_text)
+			end)
+		end,
+		text = false,
+	})
+	-- local output = vim.system({
+	-- 	"chafa",
+	-- 	opts.path,
+	-- 	"--format=symbols",
+	-- 	-- "--format=iterm",
+	-- 	"--clear",
+	-- 	"--size",
+	-- 	string.format("%sx%s", opts.preview_width, opts.preview_height),
+	-- }):wait()
+	--
+	-- local image_text = output.stdout
+	-- if image_text == nil then
+	-- 	return
+	-- end
+	--
+	-- local channel = vim.api.nvim_open_term(opts.preview_buffer, {})
+	--
+	-- vim.api.nvim_chan_send(channel, image_text)
 end
 
 ---@param opts PreviewDrawerOptions
 local function gif_preview(opts)
-	return get_render_at_size_command(opts.path, opts.preview_width, opts.preview_height)
+	-- return get_render_at_size_image(opts.path, opts.preview_width, opts.preview_height)
+	error("unimplemented preview")
 end
 
 ---@param opts PreviewDrawerOptions
@@ -120,24 +163,36 @@ local draw_matcher = {
 
 M.base_directory = ""
 M.media_preview = defaulter(function(opts)
-	return previewers.new_termopen_previewer({
-		get_command = opts.get_command or function(entry, _)
-			local tmp_table = vim.split(entry.value, "\t")
+	return previewers.new_buffer_previewer({
+		define_preview = function(self, entry)
+			-- vim.print("self:", self)
+			vim.print("self:", self)
+			vim.print("entry:", entry)
+			local from_entry = require("telescope.from_entry")
+			local filepath = from_entry.path(entry, true)
+			if filepath == nil or filepath == "" then
+				return
+			end
+
+			vim.print("path:", filepath)
+
+			-- local tmp_table = vim.split(entry.value, "\t")
 			local preview = opts.get_preview_window()
 
 			opts.cwd = opts.cwd and vim.fn.expand(opts.cwd) or vim.loop.cwd()
 
-			if vim.tbl_isempty(tmp_table) then
-				return { "echo", "" }
-			end
+			-- if vim.tbl_isempty(tmp_table) then
+			-- 	return { "echo", "" }
+			-- end
 
-			local path = string.format([[%s/%s]], opts.cwd, tmp_table[1])
-			local extension = get_file_extension(path)
+			-- local path = string.format([[%s/%s]], opts.cwd, tmp_table[1])
+			local extension = get_file_extension(filepath)
 
-			local preview_drawer = draw_matcher[extension]
-			if preview_drawer then
-				return preview_drawer({
-					path = path,
+			local preview_drawer_fn = draw_matcher[extension]
+			if preview_drawer_fn then
+				preview_drawer_fn({
+					path = filepath,
+					preview_buffer = self.state.bufnr,
 					preview_col = preview.col,
 					preview_line = preview.line + 1,
 					preview_width = preview.width,
@@ -149,6 +204,36 @@ M.media_preview = defaulter(function(opts)
 		end,
 	})
 end, {})
+-- M.media_preview = defaulter(function(opts)
+-- 	return previewers.new_termopen_previewer({
+-- 		get_command = opts.get_command or function(entry, _)
+-- 			local tmp_table = vim.split(entry.value, "\t")
+-- 			local preview = opts.get_preview_window()
+--
+-- 			opts.cwd = opts.cwd and vim.fn.expand(opts.cwd) or vim.loop.cwd()
+--
+-- 			if vim.tbl_isempty(tmp_table) then
+-- 				return { "echo", "" }
+-- 			end
+--
+-- 			local path = string.format([[%s/%s]], opts.cwd, tmp_table[1])
+-- 			local extension = get_file_extension(path)
+--
+-- 			local preview_drawer = draw_matcher[extension]
+-- 			if preview_drawer then
+-- 				return preview_drawer({
+-- 					path = path,
+-- 					preview_col = preview.col,
+-- 					preview_line = preview.line + 1,
+-- 					preview_width = preview.width,
+-- 					preview_height = preview.height,
+-- 				})
+-- 			else
+-- 				error("invalid file type", 2)
+-- 			end
+-- 		end,
+-- 	})
+-- end, {})
 
 function M.media_files(opts)
 	local find_commands = {
